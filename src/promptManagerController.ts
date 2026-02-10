@@ -328,7 +328,14 @@ export class PromptManagerController {
 			function render() {
 				scopeSelect.value = scope;
 				projectSelect.textContent = '';
-				projectSelect.disabled = scope !== 'project';
+				projectSelect.disabled = scope !== 'project' || projects.length === 0;
+
+				if (projects.length === 0) {
+					const opt = document.createElement('option');
+					opt.value = '';
+					opt.textContent = 'No workspace folder (open a folder to use Project scope)';
+					projectSelect.appendChild(opt);
+				}
 
 				for (const p of projects) {
 					const opt = document.createElement('option');

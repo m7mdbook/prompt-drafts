@@ -4,7 +4,7 @@
   "publisher": "m7mdbook",
   "description": "Save and reuse AI prompt drafts",
   "icon": "images/icon.png",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "repository": {
     "type": "git",
     "url": "https://github.com/m7mdbook/prompt-drafts.git"
