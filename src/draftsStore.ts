@@ -10,6 +10,7 @@ export type PromptDraft = {
 };
 
 const DRAFTS_KEY = 'drafts';
+const PROJECT_DRAFTS_KEY = 'draftsByProject';
 
 function nowMs(): number {
 	return Date.now();
@@ -45,6 +46,19 @@ function normalizeDrafts(value: unknown): PromptDraft[] {
 	// newest first
 	drafts.sort((a, b) => b.updatedAt - a.updatedAt);
 	return drafts;
+}
+
+function normalizeDraftsByProject(value: unknown): Record<string, PromptDraft[]> {
+	if (!value || typeof value !== 'object') {
+		return {};
+	}
+
+	const raw = value as Record<string, unknown>;
+	const result: Record<string, PromptDraft[]> = {};
+	for (const [projectKey, draftsValue] of Object.entries(raw)) {
+		result[projectKey] = normalizeDrafts(draftsValue);
+	}
+	return result;
 }
 
 export class DraftsStore {
@@ -84,5 +98,45 @@ export class DraftsStore {
 			DRAFTS_KEY,
 			drafts.filter((d) => d.id !== id)
 		);
+	}
+
+	public getProjects(): { key: string; name: string }[] {
+		const folders = vscode.workspace.workspaceFolders ?? [];
+		return folders.map((f) => ({ key: f.uri.toString(), name: f.name }));
+	}
+
+	public getProjectDrafts(projectKey: string): PromptDraft[] {
+		const map = normalizeDraftsByProject(this.context.workspaceState.get(PROJECT_DRAFTS_KEY));
+		return map[projectKey] ?? [];
+	}
+
+	public async addProjectDraft(projectKey: string, text: string): Promise<PromptDraft> {
+		const map = normalizeDraftsByProject(this.context.workspaceState.get(PROJECT_DRAFTS_KEY));
+		const drafts = map[projectKey] ?? [];
+		const time = nowMs();
+		const draft: PromptDraft = {
+			id: createId(),
+			text,
+			createdAt: time,
+			updatedAt: time,
+		};
+		map[projectKey] = [draft, ...drafts];
+		await this.context.workspaceState.update(PROJECT_DRAFTS_KEY, map);
+		return draft;
+	}
+
+	public async updateProjectDraft(projectKey: string, id: string, text: string): Promise<void> {
+		const map = normalizeDraftsByProject(this.context.workspaceState.get(PROJECT_DRAFTS_KEY));
+		const drafts = map[projectKey] ?? [];
+		const time = nowMs();
+		map[projectKey] = drafts.map((d) => (d.id === id ? { ...d, text, updatedAt: time } : d));
+		await this.context.workspaceState.update(PROJECT_DRAFTS_KEY, map);
+	}
+
+	public async deleteProjectDraft(projectKey: string, id: string): Promise<void> {
+		const map = normalizeDraftsByProject(this.context.workspaceState.get(PROJECT_DRAFTS_KEY));
+		const drafts = map[projectKey] ?? [];
+		map[projectKey] = drafts.filter((d) => d.id !== id);
+		await this.context.workspaceState.update(PROJECT_DRAFTS_KEY, map);
 	}
 }

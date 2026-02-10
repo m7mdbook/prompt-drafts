@@ -2,12 +2,30 @@ import * as vscode from 'vscode';
 
 import { DraftsStore, DraftScope } from './draftsStore';
 import { PromptManagerViewProvider } from './promptManagerView';
+import { PromptManagerPanel } from './promptManagerPanel';
 
 const SCOPE_KEY = 'promptDrafts.scope';
 const INPUT_BUFFER_KEY = 'promptDrafts.inputBuffer';
 
 function getCurrentScope(context: vscode.ExtensionContext): DraftScope {
   return context.globalState.get<DraftScope>(SCOPE_KEY) ?? 'global';
+}
+
+function getActiveProjectKey(): string | null {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (folders.length === 0) {
+    return null;
+  }
+
+  const editor = vscode.window.activeTextEditor;
+  if (editor) {
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    if (workspaceFolder) {
+      return workspaceFolder.uri.toString();
+    }
+  }
+
+  return folders[0].uri.toString();
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -18,10 +36,16 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerWebviewViewProvider(PromptManagerViewProvider.viewType, promptManagerProvider)
   );
 
+  const openManagerCmd = vscode.commands.registerCommand('promptDrafts.openManager', async () => {
+    PromptManagerPanel.createOrShow(context, store);
+  });
+  context.subscriptions.push(openManagerCmd);
+
   const saveCmd = vscode.commands.registerCommand(
     'promptDrafts.save',
     async () => {
       const scope = getCurrentScope(context);
+			const projectKey = scope === 'project' ? getActiveProjectKey() : null;
       const input = vscode.window.createInputBox();
       input.title = 'Save Prompt Draft';
       input.prompt = 'Paste or type the prompt to save';
@@ -49,7 +73,13 @@ export function activate(context: vscode.ExtensionContext) {
           cleanup();
           return;
         }
-        await store.addDraft(scope, text);
+				if (scope === 'global') {
+					await store.addDraft('global', text);
+				} else if (projectKey) {
+					await store.addProjectDraft(projectKey, text);
+				} else {
+					vscode.window.showWarningMessage('Open a folder/workspace to save project drafts');
+				}
         await context.globalState.update(INPUT_BUFFER_KEY, '');
         cleanup();
         vscode.window.showInformationMessage('Prompt draft saved');
@@ -66,7 +96,13 @@ export function activate(context: vscode.ExtensionContext) {
   'promptDrafts.insert',
   async () => {
     const scope = getCurrentScope(context);
-    const drafts = store.getDrafts(scope);
+      const projectKey = scope === 'project' ? getActiveProjectKey() : null;
+      const drafts =
+        scope === 'global'
+          ? store.getDrafts('global')
+          : projectKey
+            ? store.getProjectDrafts(projectKey)
+            : [];
 
     if (!drafts.length) {
       vscode.window.showWarningMessage('No saved prompt drafts');

@@ -1,10 +1,20 @@
 {
   "name": "prompt-drafts",
-  "displayName": "prompt-drafts",
+  "displayName": "Prompt Drafts",
+  "publisher": "m7mdbook",
   "description": "Save and reuse AI prompt drafts",
-  "version": "0.0.1",
+  "icon": "images/icon.png",
+  "version": "0.0.2",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/m7mdbook/prompt-drafts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/m7mdbook/prompt-drafts/issues"
+  },
+  "homepage": "https://github.com/m7mdbook/prompt-drafts#readme",
   "engines": {
-    "vscode": "^1.109.0"
+    "vscode": "^1.80.0"
   },
   "categories": [
     "Other"
@@ -12,6 +22,7 @@
   "activationEvents": [
     "onCommand:promptDrafts.save",
     "onCommand:promptDrafts.insert",
+    "onCommand:promptDrafts.openManager",
     "onView:promptDrafts.manager"
   ],
   "main": "./dist/extension.js",
@@ -24,6 +35,10 @@
       {
         "command": "promptDrafts.insert",
         "title": "Insert Prompt Draft"
+      },
+      {
+        "command": "promptDrafts.openManager",
+        "title": "Open Prompt Drafts Manager"
       }
     ],
     "views": {
@@ -35,15 +50,15 @@
       ]
     },
     "keybindings": [
-    {
-      "command": "promptDrafts.save",
-      "key": "ctrl+alt+s"
-    },
-    {
-      "command": "promptDrafts.insert",
-      "key": "ctrl+alt+i"
-    }
-  ]
+      {
+        "command": "promptDrafts.save",
+        "key": "ctrl+alt+s"
+      },
+      {
+        "command": "promptDrafts.insert",
+        "key": "ctrl+alt+i"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -60,15 +75,15 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.109.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "typescript-eslint": "^8.54.0",
-    "eslint": "^9.39.2",
+    "@types/vscode": "^1.80.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.27.2",
+    "eslint": "^9.39.2",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.9.3",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
+    "typescript-eslint": "^8.54.0"
   }
 }

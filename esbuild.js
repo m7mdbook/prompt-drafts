@@ -44,6 +44,21 @@ async function main() {
 	});
 	if (watch) {
 		await ctx.watch();
+		console.log('[watch] watching for changes');
+
+		const dispose = async () => {
+			try {
+				await ctx.dispose();
+			} finally {
+				process.exit(0);
+			}
+		};
+
+		process.on('SIGINT', () => void dispose());
+		process.on('SIGTERM', () => void dispose());
+
+		// Keep the process alive while watching.
+		await new Promise(() => {});
 	} else {
 		await ctx.rebuild();
 		await ctx.dispose();
