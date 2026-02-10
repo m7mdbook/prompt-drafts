@@ -184,7 +184,7 @@
 		setTimeout(() => post({ type: 'requestDrafts' }), 50);
 		setTimeout(() => {
 			if (!pendingCreate) return;
-			setStatus('No response from extension. Open Output → Prompt Drafts');
+			setStatus('No response from extension. Try Developer: Reload Window');
 		}, 1500);
 	});
 

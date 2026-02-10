@@ -25,11 +25,6 @@ type ExtToWebviewMessage =
 const SCOPE_KEY = 'promptDrafts.scope';
 const PROJECT_KEY = 'promptDrafts.projectKey';
 
-const output = vscode.window.createOutputChannel('Prompt Drafts');
-function log(message: string): void {
-	output.appendLine(`[${new Date().toISOString()}] ${message}`);
-}
-
 export class PromptManagerController {
 	private scope: DraftScope;
 	private projectKey: string | null;
@@ -50,15 +45,12 @@ export class PromptManagerController {
 			localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')],
 		};
 		webview.html = this.getHtml(webview);
-		log('Webview attached');
 
 		webview.onDidReceiveMessage(async (raw: WebviewToExtMessage) => {
 			try {
-				log(`← ${raw.type}`);
 				await this.onMessage(raw);
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
-				log(`! Error handling message: ${message}`);
 				this.postMessage({ type: 'error', message });
 			}
 		});
@@ -74,10 +66,8 @@ export class PromptManagerController {
 				return;
 			case 'setScope':
 				this.scope = message.scope;
-				log(`scope=${this.scope}`);
 				if (this.scope === 'project') {
 					const projects = this.store.getProjects();
-					log(`projects=${projects.length}`);
 					if (projects.length === 0) {
 						this.scope = 'global';
 						await this.context.globalState.update(SCOPE_KEY, this.scope);
@@ -95,7 +85,6 @@ export class PromptManagerController {
 				return;
 			case 'setProject':
 				this.projectKey = message.projectKey;
-				log(`projectKey=${this.projectKey}`);
 				await this.context.globalState.update(PROJECT_KEY, this.projectKey);
 				this.postState();
 				return;
@@ -118,7 +107,6 @@ export class PromptManagerController {
 				this.postStatus('Saved');
 				return;
 			case 'createDraft':
-				log(`createDraft len=${message.text.length}`);
 				await this.addDraftForCurrentSelection(message.text);
 				this.postState();
 				this.postStatus(`Created (${this.getDraftsForCurrentSelection().length} drafts)`);
@@ -188,7 +176,6 @@ export class PromptManagerController {
 
 	private postState(): void {
 		const projects = this.store.getProjects();
-		log(`postState scope=${this.scope} projects=${projects.length} projectKey=${this.projectKey}`);
 		if (this.scope === 'project' && projects.length === 0) {
 			this.scope = 'global';
 			void this.context.globalState.update(SCOPE_KEY, this.scope);
@@ -197,7 +184,6 @@ export class PromptManagerController {
 			this.ensureProjectSelected();
 		}
 		const drafts = this.getDraftsForCurrentSelection();
-		log(`drafts=${drafts.length}`);
 		this.postMessage({
 			type: 'state',
 			scope: this.scope,
