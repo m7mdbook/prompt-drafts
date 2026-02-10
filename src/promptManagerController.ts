@@ -19,10 +19,16 @@ type ExtToWebviewMessage =
 			projectKey: string | null;
 			drafts: PromptDraft[];
 		}
+	| { type: 'status'; message: string }
 	| { type: 'error'; message: string };
 
 const SCOPE_KEY = 'promptDrafts.scope';
 const PROJECT_KEY = 'promptDrafts.projectKey';
+
+const output = vscode.window.createOutputChannel('Prompt Drafts');
+function log(message: string): void {
+	output.appendLine(`[${new Date().toISOString()}] ${message}`);
+}
 
 export class PromptManagerController {
 	private scope: DraftScope;
@@ -39,14 +45,20 @@ export class PromptManagerController {
 
 	public attach(webview: vscode.Webview): void {
 		this.webview = webview;
-		webview.options = { enableScripts: true };
+		webview.options = {
+			enableScripts: true,
+			localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')],
+		};
 		webview.html = this.getHtml(webview);
+		log('Webview attached');
 
 		webview.onDidReceiveMessage(async (raw: WebviewToExtMessage) => {
 			try {
+				log(`← ${raw.type}`);
 				await this.onMessage(raw);
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
+				log(`! Error handling message: ${message}`);
 				this.postMessage({ type: 'error', message });
 			}
 		});
@@ -62,8 +74,10 @@ export class PromptManagerController {
 				return;
 			case 'setScope':
 				this.scope = message.scope;
+				log(`scope=${this.scope}`);
 				if (this.scope === 'project') {
 					const projects = this.store.getProjects();
+					log(`projects=${projects.length}`);
 					if (projects.length === 0) {
 						this.scope = 'global';
 						await this.context.globalState.update(SCOPE_KEY, this.scope);
@@ -81,6 +95,7 @@ export class PromptManagerController {
 				return;
 			case 'setProject':
 				this.projectKey = message.projectKey;
+				log(`projectKey=${this.projectKey}`);
 				await this.context.globalState.update(PROJECT_KEY, this.projectKey);
 				this.postState();
 				return;
@@ -95,14 +110,18 @@ export class PromptManagerController {
 			case 'deleteDraft':
 				await this.deleteDraftForCurrentSelection(message.id);
 				this.postState();
+				this.postStatus('Deleted');
 				return;
 			case 'updateDraft':
 				await this.updateDraftForCurrentSelection(message.id, message.text);
 				this.postState();
+				this.postStatus('Saved');
 				return;
 			case 'createDraft':
+				log(`createDraft len=${message.text.length}`);
 				await this.addDraftForCurrentSelection(message.text);
 				this.postState();
+				this.postStatus(`Created (${this.getDraftsForCurrentSelection().length} drafts)`);
 				return;
 		}
 	}
@@ -169,6 +188,7 @@ export class PromptManagerController {
 
 	private postState(): void {
 		const projects = this.store.getProjects();
+		log(`postState scope=${this.scope} projects=${projects.length} projectKey=${this.projectKey}`);
 		if (this.scope === 'project' && projects.length === 0) {
 			this.scope = 'global';
 			void this.context.globalState.update(SCOPE_KEY, this.scope);
@@ -176,12 +196,14 @@ export class PromptManagerController {
 		if (this.scope === 'project') {
 			this.ensureProjectSelected();
 		}
+		const drafts = this.getDraftsForCurrentSelection();
+		log(`drafts=${drafts.length}`);
 		this.postMessage({
 			type: 'state',
 			scope: this.scope,
 			projects,
 			projectKey: this.projectKey,
-			drafts: this.getDraftsForCurrentSelection(),
+			drafts,
 		});
 	}
 
@@ -189,14 +211,20 @@ export class PromptManagerController {
 		this.webview?.postMessage(message);
 	}
 
+	private postStatus(message: string): void {
+		this.postMessage({ type: 'status', message });
+	}
+
 	private getHtml(webview: vscode.Webview): string {
-		const nonce = createNonce();
+		const scriptUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.context.extensionUri, 'media', 'promptManager.js')
+		);
 
 		return `<!doctype html>
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+		<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>Prompt Drafts</title>
 		<style>
@@ -280,7 +308,7 @@ export class PromptManagerController {
 					<button id="create" type="button">Create</button>
 					<button id="clear" class="secondary" type="button">Clear</button>
 				</div>
-				<div class="small muted" id="status"></div>
+				<div class="small muted" id="status">Loading…</div>
 			</div>
 
 			<div class="hr"></div>
@@ -291,202 +319,7 @@ export class PromptManagerController {
 			<div id="list" class="list"></div>
 		</div>
 
-		<script nonce="${nonce}">
-			const vscode = acquireVsCodeApi();
-
-			/** @type {'project'|'global'} */
-			let scope = 'global';
-			/** @type {{key:string,name:string}[]} */
-			let projects = [];
-			/** @type {string|null} */
-			let projectKey = null;
-			/** @type {{id:string,text:string,createdAt:number,updatedAt:number}[]} */
-			let drafts = [];
-			/** @type {string|null} */
-			let editingId = null;
-			let lastEditedText = '';
-			let lastAutosaveAt = 0;
-
-			const scopeSelect = document.getElementById('scope');
-			const projectSelect = document.getElementById('project');
-			const refreshBtn = document.getElementById('refresh');
-			const editor = document.getElementById('editor');
-			const list = document.getElementById('list');
-			const createBtn = document.getElementById('create');
-			const clearBtn = document.getElementById('clear');
-			const status = document.getElementById('status');
-
-			function post(message) { vscode.postMessage(message); }
-			function setStatus(text) { status.textContent = text; }
-
-			function summarize(text) {
-				const firstLine = (text || '').split(/\r?\n/)[0];
-				if (!firstLine) return '(empty)';
-				return firstLine.length > 80 ? firstLine.slice(0, 80) + '…' : firstLine;
-			}
-
-			function render() {
-				scopeSelect.value = scope;
-				projectSelect.textContent = '';
-				projectSelect.disabled = scope !== 'project' || projects.length === 0;
-
-				if (projects.length === 0) {
-					const opt = document.createElement('option');
-					opt.value = '';
-					opt.textContent = 'No workspace folder (open a folder to use Project scope)';
-					projectSelect.appendChild(opt);
-				}
-
-				for (const p of projects) {
-					const opt = document.createElement('option');
-					opt.value = p.key;
-					opt.textContent = p.name;
-					projectSelect.appendChild(opt);
-				}
-				if (projectKey) {
-					projectSelect.value = projectKey;
-				}
-
-				list.textContent = '';
-
-				if (!drafts.length) {
-					const empty = document.createElement('div');
-					empty.className = 'small muted';
-					empty.textContent = 'No drafts yet. Use Create above, or run the Save Prompt Draft command.';
-					list.appendChild(empty);
-					return;
-				}
-
-				for (const d of drafts) {
-					const card = document.createElement('div');
-					card.className = 'card';
-
-					const title = document.createElement('div');
-					title.className = 'cardTitle';
-					title.textContent = summarize(d.text);
-					card.appendChild(title);
-
-					const actions = document.createElement('div');
-					actions.className = 'cardActions';
-
-					const insert = document.createElement('button');
-					insert.type = 'button';
-					insert.textContent = 'Insert';
-					insert.addEventListener('click', () => post({ type: 'insertDraft', id: d.id }));
-
-					const edit = document.createElement('button');
-					edit.type = 'button';
-					edit.className = 'secondary';
-					edit.textContent = editingId === d.id ? 'Editing' : 'Edit';
-					edit.addEventListener('click', () => {
-						editingId = d.id;
-						editor.value = d.text;
-						lastEditedText = d.text;
-						setStatus('Editing draft');
-						render();
-					});
-
-					const del = document.createElement('button');
-					del.type = 'button';
-					del.className = 'danger';
-					del.textContent = 'Delete';
-					del.addEventListener('click', () => post({ type: 'deleteDraft', id: d.id }));
-
-					actions.appendChild(insert);
-					actions.appendChild(edit);
-					actions.appendChild(del);
-					card.appendChild(actions);
-					list.appendChild(card);
-				}
-			}
-
-			scopeSelect.addEventListener('change', () => {
-				scope = scopeSelect.value;
-				editingId = null;
-				editor.value = '';
-				lastEditedText = '';
-				post({ type: 'setScope', scope });
-			});
-
-			projectSelect.addEventListener('change', () => {
-				projectKey = projectSelect.value;
-				editingId = null;
-				editor.value = '';
-				lastEditedText = '';
-				post({ type: 'setProject', projectKey });
-			});
-
-			refreshBtn.addEventListener('click', () => post({ type: 'requestDrafts' }));
-
-			createBtn.addEventListener('click', () => {
-				const text = editor.value || '';
-				if (!text.trim()) {
-					setStatus('Nothing to create');
-					return;
-				}
-				post({ type: 'createDraft', text });
-				editingId = null;
-				editor.value = '';
-				lastEditedText = '';
-				setStatus('Created');
-			});
-
-			clearBtn.addEventListener('click', () => {
-				editingId = null;
-				editor.value = '';
-				lastEditedText = '';
-				setStatus('Cleared');
-				render();
-			});
-
-			// Autosave edited draft every 2 seconds (only when editing an existing draft)
-			setInterval(() => {
-				if (!editingId) return;
-				const text = editor.value || '';
-				if (text === lastEditedText) return;
-				const now = Date.now();
-				if (now - lastAutosaveAt < 1800) return;
-
-				lastEditedText = text;
-				lastAutosaveAt = now;
-				post({ type: 'updateDraft', id: editingId, text });
-				setStatus('Auto-saved');
-			}, 500);
-
-			window.addEventListener('message', (event) => {
-				const message = event.data;
-				if (!message || !message.type) return;
-
-				if (message.type === 'state') {
-					scope = message.scope;
-					projects = message.projects || [];
-					projectKey = message.projectKey || null;
-					drafts = message.drafts;
-
-					if (editingId) {
-						const edited = drafts.find((d) => d.id === editingId);
-						if (!edited) {
-							editingId = null;
-							editor.value = '';
-							lastEditedText = '';
-						} else if (editor.value !== edited.text && editor.value === lastEditedText) {
-							editor.value = edited.text;
-							lastEditedText = edited.text;
-						}
-					}
-
-					render();
-					return;
-				}
-
-				if (message.type === 'error') {
-					setStatus(message.message);
-					return;
-				}
-			});
-
-			post({ type: 'ready' });
-		</script>
+		<script src="${scriptUri}"></script>
 	</body>
 </html>`;
 	}

@@ -4,7 +4,7 @@
   "publisher": "m7mdbook",
   "description": "Save and reuse AI prompt drafts",
   "icon": "images/icon.png",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "repository": {
     "type": "git",
     "url": "https://github.com/m7mdbook/prompt-drafts.git"
@@ -27,6 +27,11 @@
     "onView:promptDrafts.manager"
   ],
   "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -55,7 +60,8 @@
       "promptDrafts": [
         {
           "id": "promptDrafts.manager",
-          "name": "Prompt Drafts"
+          "name": "Prompt Drafts",
+          "type": "webview"
         }
       ]
     },
