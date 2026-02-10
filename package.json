@@ -20,6 +20,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:promptDrafts.save",
     "onCommand:promptDrafts.insert",
     "onCommand:promptDrafts.openManager",
@@ -27,6 +28,15 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "promptDrafts",
+          "title": "Prompt Drafts",
+          "icon": "images/icon.svg"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "promptDrafts.save",
@@ -42,7 +52,7 @@
       }
     ],
     "views": {
-      "explorer": [
+      "promptDrafts": [
         {
           "id": "promptDrafts.manager",
           "name": "Prompt Drafts"

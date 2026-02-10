@@ -8,8 +8,24 @@ import * as vscode from 'vscode';
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
 
-	test('Sample test', () => {
-		assert.strictEqual(-1, [1, 2, 3].indexOf(5));
-		assert.strictEqual(-1, [1, 2, 3].indexOf(0));
+	test('Registers contributed commands', async () => {
+		const extension = vscode.extensions.getExtension('m7mdbook.prompt-drafts');
+		assert.ok(extension, 'Extension not found (expected id: m7mdbook.prompt-drafts)');
+
+		await extension!.activate();
+
+		const commands = await vscode.commands.getCommands(true);
+		const expected = [
+			'promptDrafts.save',
+			'promptDrafts.insert',
+			'promptDrafts.openManager',
+		];
+
+		for (const command of expected) {
+			assert.ok(
+				commands.includes(command),
+				`Missing command registration: ${command}`
+			);
+		}
 	});
 });
