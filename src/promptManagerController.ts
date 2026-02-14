@@ -7,6 +7,7 @@ type WebviewToExtMessage =
 	| { type: 'setProject'; projectKey: string }
 	| { type: 'requestDrafts' }
 	| { type: 'insertDraft'; id: string }
+	| { type: 'sendToCopilotChat'; id: string }
 	| { type: 'deleteDraft'; id: string }
 	| { type: 'updateDraft'; id: string; text: string }
 	| { type: 'createDraft'; text: string };
@@ -96,10 +97,33 @@ export class PromptManagerController {
 				await insertIntoActiveEditor(draft.text);
 				return;
 			}
+			case 'sendToCopilotChat': {
+				const draft = this.getDraftsForCurrentSelection().find((d) => d.id === message.id);
+				if (!draft) {
+					return;
+				}
+				await sendToCopilotChat(draft.text, (msg) => this.postStatus(msg));
+				return;
+			}
 			case 'deleteDraft':
-				await this.deleteDraftForCurrentSelection(message.id);
-				this.postState();
-				this.postStatus('Deleted');
+				{
+					const draft = this.getDraftsForCurrentSelection().find((d) => d.id === message.id);
+					if (!draft) {
+						return;
+					}
+					const selection = await vscode.window.showWarningMessage(
+						`Delete this draft?`,
+						{ modal: true, detail: summarizeForConfirm(draft.text) },
+						'Delete'
+					);
+					if (selection !== 'Delete') {
+						this.postStatus('Cancelled');
+						return;
+					}
+					await this.deleteDraftForCurrentSelection(message.id);
+					this.postState();
+					this.postStatus('Deleted');
+				}
 				return;
 			case 'updateDraft':
 				await this.updateDraftForCurrentSelection(message.id, message.text);
@@ -292,6 +316,7 @@ export class PromptManagerController {
 			<div class="row" style="margin-top: 8px; justify-content: space-between;">
 				<div class="row">
 					<button id="create" type="button">Create</button>
+					<button id="save" class="secondary" type="button" disabled>Save</button>
 					<button id="clear" class="secondary" type="button">Clear</button>
 				</div>
 				<div class="small muted" id="status">Loading…</div>
@@ -321,6 +346,49 @@ async function insertIntoActiveEditor(text: string): Promise<void> {
 	await editor.insertSnippet(new vscode.SnippetString(text));
 }
 
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function tryExecuteCommand(command: string): Promise<boolean> {
+	try {
+		await vscode.commands.executeCommand(command);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function sendToCopilotChat(text: string, setStatus: (message: string) => void): Promise<void> {
+	if (!text.trim()) {
+		setStatus('Nothing to send');
+		return;
+	}
+
+	await vscode.env.clipboard.writeText(text);
+
+	// Best-effort: open Chat, focus input, paste.
+	const opened =
+		(await tryExecuteCommand('workbench.action.chat.open')) ||
+		(await tryExecuteCommand('workbench.action.chat.openInNewWindow'));
+
+	if (opened) {
+		await delay(100);
+		await tryExecuteCommand('workbench.action.chat.focusInput');
+		await delay(50);
+		const pasted =
+			(await tryExecuteCommand('editor.action.clipboardPasteAction')) ||
+			(await tryExecuteCommand('workbench.action.clipboardPasteAction'));
+
+		if (pasted) {
+			setStatus('Sent to Copilot Chat');
+			return;
+		}
+	}
+
+	setStatus('Copied to clipboard — paste into Copilot Chat');
+}
+
 function createNonce(): string {
 	let text = '';
 	const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -328,4 +396,12 @@ function createNonce(): string {
 		text += possible.charAt(Math.floor(Math.random() * possible.length));
 	}
 	return text;
+}
+
+function summarizeForConfirm(text: string): string {
+	const firstLine = (text ?? '').split(/\r?\n/)[0].trim();
+	if (!firstLine) {
+		return '(empty)';
+	}
+	return firstLine.length > 140 ? `${firstLine.slice(0, 140)}…` : firstLine;
 }

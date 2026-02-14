@@ -39,6 +39,7 @@
 	const editor = /** @type {HTMLTextAreaElement} */ (document.getElementById('editor'));
 	const list = /** @type {HTMLDivElement} */ (document.getElementById('list'));
 	const createBtn = /** @type {HTMLButtonElement} */ (document.getElementById('create'));
+	const saveBtn = /** @type {HTMLButtonElement} */ (document.getElementById('save'));
 	const clearBtn = /** @type {HTMLButtonElement} */ (document.getElementById('clear'));
 
 	function post(message) {
@@ -87,6 +88,7 @@
 		}
 
 		list.textContent = '';
+		saveBtn.disabled = !editingId;
 
 		if (!drafts.length) {
 			const empty = document.createElement('div');
@@ -113,6 +115,12 @@
 			insert.textContent = 'Insert';
 			insert.addEventListener('click', () => post({ type: 'insertDraft', id: d.id }));
 
+			const chat = document.createElement('button');
+			chat.type = 'button';
+			chat.className = 'secondary';
+			chat.textContent = 'Copilot Chat';
+			chat.addEventListener('click', () => post({ type: 'sendToCopilotChat', id: d.id }));
+
 			const edit = document.createElement('button');
 			edit.type = 'button';
 			edit.className = 'secondary';
@@ -121,6 +129,7 @@
 				editingId = d.id;
 				editor.value = d.text;
 				lastEditedText = d.text;
+				editor.focus();
 				setStatus('Editing draft');
 				render();
 			});
@@ -132,6 +141,7 @@
 			del.addEventListener('click', () => post({ type: 'deleteDraft', id: d.id }));
 
 			actions.appendChild(insert);
+			actions.appendChild(chat);
 			actions.appendChild(edit);
 			actions.appendChild(del);
 			card.appendChild(actions);
@@ -186,6 +196,18 @@
 			if (!pendingCreate) return;
 			setStatus('No response from extension. Try Developer: Reload Window');
 		}, 1500);
+	});
+
+	saveBtn.addEventListener('click', () => {
+		if (!editingId) {
+			setStatus('Select a draft to edit');
+			return;
+		}
+		const text = editor.value || '';
+		post({ type: 'updateDraft', id: editingId, text });
+		lastEditedText = text;
+		setStatus('Saved');
+		setTimeout(() => post({ type: 'requestDrafts' }), 50);
 	});
 
 	clearBtn.addEventListener('click', () => {
