@@ -7,6 +7,7 @@ type WebviewToExtMessage =
 	| { type: 'setProject'; projectKey: string }
 	| { type: 'requestDrafts' }
 	| { type: 'insertDraft'; id: string }
+	| { type: 'openDraftInNewFile'; id: string }
 	| { type: 'sendToCopilotChat'; id: string }
 	| { type: 'deleteDraft'; id: string }
 	| { type: 'updateDraft'; id: string; text: string }
@@ -95,6 +96,16 @@ export class PromptManagerController {
 					return;
 				}
 				await insertIntoActiveEditor(draft.text);
+				return;
+			}
+			case 'openDraftInNewFile': {
+				const draft = this.getDraftsForCurrentSelection().find((d) => d.id === message.id);
+				if (!draft) {
+					return;
+				}
+				const doc = await vscode.workspace.openTextDocument({ content: draft.text });
+				await vscode.window.showTextDocument(doc, { preview: false });
+				this.postStatus('Opened in new file');
 				return;
 			}
 			case 'sendToCopilotChat': {
@@ -290,6 +301,18 @@ export class PromptManagerController {
 			.cardTitle { font-weight: 600; margin-bottom: 6px; }
 			.cardActions { display: flex; gap: 6px; flex-wrap: wrap; }
 			.muted { opacity: 0.75; }
+			.btnSmall { padding: 4px 8px; font-size: 0.9em; }
+			.btnIcon {
+				padding: 4px 0;
+				width: 32px;
+				text-align: center;
+				font-size: 1em;
+				line-height: 1;
+			}
+			button:disabled {
+				opacity: 0.6;
+				cursor: default;
+			}
 		</style>
 	</head>
 	<body>

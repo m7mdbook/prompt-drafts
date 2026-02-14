@@ -112,18 +112,25 @@
 
 			const insert = document.createElement('button');
 			insert.type = 'button';
+			insert.className = 'btnSmall';
 			insert.textContent = 'Insert';
 			insert.addEventListener('click', () => post({ type: 'insertDraft', id: d.id }));
 
 			const chat = document.createElement('button');
 			chat.type = 'button';
-			chat.className = 'secondary';
-			chat.textContent = 'Copilot Chat';
+			chat.className = 'secondary btnSmall';
+			chat.textContent = 'Chat';
 			chat.addEventListener('click', () => post({ type: 'sendToCopilotChat', id: d.id }));
+
+			const newFile = document.createElement('button');
+			newFile.type = 'button';
+			newFile.className = 'secondary btnSmall';
+			newFile.textContent = 'New File';
+			newFile.addEventListener('click', () => post({ type: 'openDraftInNewFile', id: d.id }));
 
 			const edit = document.createElement('button');
 			edit.type = 'button';
-			edit.className = 'secondary';
+			edit.className = 'secondary btnSmall';
 			edit.textContent = editingId === d.id ? 'Editing' : 'Edit';
 			edit.addEventListener('click', () => {
 				editingId = d.id;
@@ -136,12 +143,15 @@
 
 			const del = document.createElement('button');
 			del.type = 'button';
-			del.className = 'danger';
-			del.textContent = 'Delete';
+			del.className = 'danger btnIcon';
+			del.textContent = '🗑';
+			del.title = 'Delete';
+			del.setAttribute('aria-label', 'Delete');
 			del.addEventListener('click', () => post({ type: 'deleteDraft', id: d.id }));
 
 			actions.appendChild(insert);
 			actions.appendChild(chat);
+			actions.appendChild(newFile);
 			actions.appendChild(edit);
 			actions.appendChild(del);
 			card.appendChild(actions);

@@ -6,6 +6,8 @@ Save and reuse prompt drafts inside VS Code.
 
 Open the **Explorer** sidebar and look for **Prompt Drafts**.
 
+![Prompt Drafts extension UI](info.png)
+
 From this view you can:
 
 - List drafts (most recently updated first)
